@@ -1,5 +1,8 @@
 window.AC = window.AC || {};
 
+console.log("CERTIFICATES PAGE LOADED ");
+
+
 AC.renderCertificates = () => {
   AC.setPage("My Certificates", "Certificates you claimed after completing courses (demo).");
 
@@ -15,28 +18,67 @@ AC.renderCertificates = () => {
     return;
   }
 
-  const rows = certs.map(c=>{
+  const rows = certs.map((c, idx)=>{
     const course = AC.COURSES.find(k => k.id === c.courseId);
-    return `
-      <tr>
-        <td><b>${c.title}</b><div class="small">course: ${course?.title || c.courseId}</div></td>
-        <td>
-          <span class="tag ok">owner: <span class="mono">${AC.shortAddr(c.owner)}</span></span>
-          <span class="tag">date: ${c.issuedAt}</span>
-        </td>
-        <td><span class="tag">proof (demo): <span class="mono">${c.txHashMock.slice(0,10)}…</span></span></td>
-      </tr>
-    `;
+      return `
+        <tr>
+          <td>
+            <b>${c.title || "Certificate"}</b>
+            <div class="small">course: ${course?.title || c.courseId}</div>
+          </td>
+
+          <td>
+            <span class="tag ok">owner:
+              <span class="mono">${AC.shortAddr ? AC.shortAddr(c.owner) : c.owner}</span>
+            </span>
+            <span class="tag">date: ${c.issuedAt}</span>
+          </td>
+
+          <td>
+            <span class="tag">proof:
+              <span class="mono">${String(c.txHash || c.txHashMock || "").slice(0,10)}…</span>
+            </span>
+          </td>
+
+          <td>
+            <button class="btnPrimary certViewBtn" data-i="${idx}">
+              View / Download
+            </button>
+          </td>
+        </tr>
+      `;
   }).join("");
 
   document.getElementById("page").innerHTML = `
     <div class="grid">
       <div class="card block col12">
         <table class="table">
-          <thead><tr><th>Certificate</th><th>Owner</th><th>Proof</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Certificate</th>
+              <th>Owner</th>
+              <th>Proof</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
     </div>
   `;
+
+  document.querySelectorAll(".certViewBtn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.i);
+      const c = certs[i];
+      const course = AC.COURSES.find(k => k.id === c.courseId);
+
+      AC.Cert?.viewCertificate?.({
+        ...c,
+        courseTitle: course?.title || c.courseId,
+        issuer: course?.issuer || "Course Platform"
+      });
+    });
+  });
+
 };

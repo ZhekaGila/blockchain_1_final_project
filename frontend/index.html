@@ -6,6 +6,7 @@
   <title>AchievementChain — NFT Portfolio (Frontend)</title>
 
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <link rel="stylesheet" href="./css/styles.css" />
 </head>
 <body>
@@ -104,6 +105,73 @@
   </div>
 </div>
 
+<div id="certModal" class="modalBackdrop">
+  <div class="modal">
+    <div class="modalHead">
+      <b>Certificate Preview</b>
+      <button id="closeCertBtn">Close</button>
+    </div>
+
+    <div class="modalBody">
+      <div class="certWrap" id="certificateView">
+        <div class="certificate">
+          <div class="certBorder"></div>
+
+          <div class="certTop">
+            <div class="certBrand">
+              <div class="certSeal"></div>
+              <div>
+                <div style="font-weight:900">AchievementChain</div>
+                <div class="small">NFT Certificate (demo export)</div>
+              </div>
+            </div>
+
+            <div class="certMeta">
+              <div>Date: <span id="certDate">—</span></div>
+              <div>ID: <span id="certId">—</span></div>
+            </div>
+          </div>
+
+          <div class="certTitle">Certificate of Completion</div>
+          <div class="certSubtitle">
+            This certifies that
+          </div>
+
+          <div class="certName" id="certFullName">—</div>
+
+          <div class="certLine"></div>
+
+          <p class="certText">
+            successfully completed the course:
+            <b id="certCourseTitle">—</b>
+          </p>
+
+          <div style="margin-top:10px">
+            <span class="tag">Issuer: <span id="certIssuer">—</span></span>
+            <span class="tag ok">Owner: <span class="mono" id="certWallet">—</span></span>
+          </div>
+
+          <div class="certFooter">
+            <div class="sigBox">
+              Signature<br/>
+              <b>Course Platform</b>
+            </div>
+
+            <div class="hashBox">
+              Proof (tx/proof):<br/>
+              <span class="mono" id="certProof">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modalFoot">
+      <button id="downloadCertBtn" class="btnPrimary">Download PNG</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 
@@ -122,8 +190,7 @@
 <script src="./js/pages/myCourses.js"></script>
 <script src="./js/pages/certificates.js"></script>
 <script src="./js/pages/profile.js"></script>
-<script src="./js/nft.js"></script>
-<script src="./js/contracts-config.js"></script>
+<script src="./js/certificate.js"></script>
 
 <script src="./js/app.js"></script>
 </body>

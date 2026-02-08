@@ -88,7 +88,16 @@ AC.claimCertificate = async (courseId) => {
     AC.setCerts(certs);
 
     AC.toast("Certificate minted!");
-    location.hash = "#/certificates";
+    if (AC.Cert && typeof AC.Cert.viewCertificate === "function") {
+      const payload = {
+        ...certs[0],
+        courseTitle: course?.title ?? courseId,
+        issuer: course?.issuer ?? "Course Platform"
+      };
+      AC.Cert.viewCertificate(payload);
+    } else {
+      location.hash = "#/certificates";
+    }
   } catch (e) {
     console.error(e);
     AC.toast("MintCertificate failed/rejected");

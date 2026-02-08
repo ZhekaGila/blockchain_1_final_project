@@ -9,4 +9,10 @@ window.AC = window.AC || {};
   document.getElementById("mockConnectBtn").addEventListener("click", AC.mockConnect);
   document.getElementById("disconnectBtn").addEventListener("click", AC.disconnectWallet);
 
+  if (AC.Cert && typeof AC.Cert.wireCertificateUI === "function") {
+    AC.Cert.wireCertificateUI();
+  }
+
+
 })();
+
