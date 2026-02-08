@@ -4,10 +4,10 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract RewardToken is ERC20, Ownable {
+contract BonusToken is ERC20, Ownable {
     address public minter;
 
-    constructor() ERC20("Bonus Token", "BNT") Ownable(msg.sender) {}
+    constructor() ERC20("Bonus Token", "BNST") Ownable(msg.sender) {}
 
     function setMinter(address _minter) external onlyOwner {
         minter = _minter;
