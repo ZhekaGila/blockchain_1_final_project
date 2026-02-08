@@ -5,23 +5,41 @@ AC.openCourse = (id) => {
   location.hash = "#/course";
 };
 
+function errMsg(e) {
+  if (e?.code === 4001) return "Transaction rejected in MetaMask.";
+  return (
+    e?.shortMessage ||
+    e?.reason ||
+    e?.info?.error?.message ||
+    e?.message ||
+    "Transaction failed."
+  );
+}
+
 AC.buyCourse = async (courseId) => {
   const { account } = AC.state;
-  if(!account){
+  if (!account) {
     AC.toast("Please connect a wallet first.");
     return;
   }
+
   const course = AC.COURSES.find(c => c.id === courseId);
-  if(!course){
+  if (!course) {
     AC.toast("Course not found.");
     return;
   }
 
   const isMock = localStorage.getItem(AC.LS.mock) === "1";
-  if(isMock){
+  if (isMock) {
     const my = AC.getMyCourses();
-    if(!AC.myCourseEntry(courseId)){
-      my.push({ id: courseId, purchasedAt: new Date().toISOString(), progress: 0, status: "in_progress", txHash: "0xMOCKTX" });
+    if (!AC.myCourseEntry(courseId)) {
+      my.push({
+        id: courseId,
+        purchasedAt: new Date().toISOString(),
+        progress: 0,
+        status: "in_progress",
+        txHash: "0xMOCKTX"
+      });
       AC.setMyCourses(my);
     }
     AC.toast("Mock purchase success. Course added to My Courses.");
@@ -30,33 +48,40 @@ AC.buyCourse = async (courseId) => {
   }
 
   const ok = await AC.initProvider();
-  if(!ok){
+  if (!ok) {
     AC.toast("MetaMask not found. Use Mock Connect.");
     return;
   }
-  try{
-    const course = AC.COURSES.find(c => c.id === courseId);
-    if (!course) {
-      AC.toast("Course not found");
+
+  try {
+    await AC.initContracts();
+
+    const courseId32 = AC.courseIdToBytes32(courseId);
+    const value = ethers.parseEther(course.priceEth); // bigint
+
+    AC.logTx?.({ title: "Buy course (ETH)", status: "wait" });
+
+    const tx = await AC.contracts.platform.buyCourse(courseId32, { value });
+
+    AC.logTx?.({ title: "Tx sent (ETH buy)", status: "wait", hash: tx.hash });
+
+    const receipt = await tx.wait();
+
+    // receipt.status: 1 (success) / 0 (fail)
+    if (receipt?.status === 0n || receipt?.status === 0) {
+      AC.logTx?.({ title: "Buy failed (reverted)", status: "err", hash: tx.hash });
+      AC.toast("Buy failed (reverted).");
       return;
     }
 
-    await AC.initContracts();
-    const platform = AC.contracts.platform;
+    AC.logTx?.({
+      title: "Course purchased (ETH)",
+      status: "ok",
+      hash: tx.hash,
+      blockNumber: receipt.blockNumber
+    });
 
-    const courseId32 = AC.courseIdToBytes32(courseId);
-
-    // цена курса
-    const value = ethers.parseEther(course.priceEth);
-
-    // визиваим контуракт
-    const tx = await platform.buyCourse(courseId32, { value });
-
-    AC.toast("Tx sent: " + tx.hash.slice(0, 10) + "…");
-
-    // ждёмс подтверждение
-    await tx.wait();
-
+    // UI: записываем в myCourses только если tx успешна
     const my = AC.getMyCourses();
     if (!AC.myCourseEntry(courseId)) {
       my.push({
@@ -66,43 +91,101 @@ AC.buyCourse = async (courseId) => {
         status: "in_progress",
         txHash: tx.hash
       });
+      AC.setMyCourses(my);
     }
-    AC.setMyCourses(my);
 
     AC.toast("Course purchased on-chain!");
     location.hash = "#/my-courses";
-
-  }catch(err){
-    console.error(err);
-    AC.toast("Transaction rejected or failed.");
+  } catch (e) {
+    console.error(e);
+    AC.logTx?.({ title: "Buy course (ETH)", status: "err" });
+    AC.toast(errMsg(e));
   }
 };
 
-  AC.buyCourseWithBonus = async (courseId) => {
-    const course = AC.COURSES.find(c => c.id === courseId);
-    if (!course) return AC.toast("Course not found");
+AC.buyCourseWithBonus = async (courseId) => {
+  const { account } = AC.state;
+  if (!account) return AC.toast("Please connect a wallet first.");
 
+  const course = AC.COURSES.find(c => c.id === courseId);
+  if (!course) return AC.toast("Course not found");
+
+  const isMock = localStorage.getItem(AC.LS.mock) === "1";
+  if (isMock) {
+    const my = AC.getMyCourses();
+    if (!AC.myCourseEntry(courseId)) {
+      my.push({
+        id: courseId,
+        purchasedAt: new Date().toISOString(),
+        progress: 0,
+        status: "in_progress",
+        txHash: "0xMOCKBNST"
+      });
+      AC.setMyCourses(my);
+    }
+    AC.toast("Mock BNST purchase success.");
+    location.hash = "#/my-courses";
+    return;
+  }
+
+  try {
     await AC.initContracts();
     const platform = AC.contracts.platform;
     const token = AC.contracts.bonusToken;
 
     const courseId32 = AC.courseIdToBytes32(courseId);
 
-    const price = await platform.bonusPrice(courseId32);
+    const [price, bal] = await Promise.all([
+      platform.bonusPrice(courseId32),
+      token.balanceOf(account),
+    ]);
+
     if (price === 0n) return AC.toast("Bonus price not set");
+
+    if (bal < price) {
+      AC.logTx?.({ title: "Buy course (BNST)", status: "err" });
+      AC.toast("Not enough BNST tokens.");
+      return;
+    }
 
     const platformAddr = AC.CONTRACTS.platform;
 
-    const current = await token.allowance(AC.state.account, platformAddr);
+    const current = await token.allowance(account, platformAddr);
     if (current < price) {
+      AC.logTx?.({ title: "Approve BNST", status: "wait" });
+
       const tx1 = await token.approve(platformAddr, price);
-      AC.toast("Approving BNST… " + tx1.hash.slice(0, 10) + "…");
-      await tx1.wait();
+      AC.logTx?.({ title: "Approve sent", status: "wait", hash: tx1.hash });
+
+      const r1 = await tx1.wait();
+      if (r1?.status === 0n || r1?.status === 0) {
+        AC.logTx?.({ title: "Approve failed", status: "err", hash: tx1.hash });
+        AC.toast("Approve failed (reverted).");
+        return;
+      }
+
+      AC.logTx?.({ title: "Approve confirmed", status: "ok", hash: tx1.hash, blockNumber: r1.blockNumber });
     }
 
+    AC.logTx?.({ title: "Buy course (BNST)", status: "wait" });
+
     const tx2 = await platform.buyCourseWithBonus(courseId32);
-    AC.toast("Buying with BNST… " + tx2.hash.slice(0, 10) + "…");
-    await tx2.wait();
+
+    AC.logTx?.({ title: "Buy sent (BNST)", status: "wait", hash: tx2.hash });
+
+    const r2 = await tx2.wait();
+    if (r2?.status === 0n || r2?.status === 0) {
+      AC.logTx?.({ title: "Buy failed (reverted)", status: "err", hash: tx2.hash });
+      AC.toast("Buy failed (reverted).");
+      return;
+    }
+
+    AC.logTx?.({
+      title: "Course purchased (BNST)",
+      status: "ok",
+      hash: tx2.hash,
+      blockNumber: r2.blockNumber
+    });
 
     const my = AC.getMyCourses();
     if (!AC.myCourseEntry(courseId)) {
@@ -120,17 +203,22 @@ AC.buyCourse = async (courseId) => {
       x.progress ??= 0;
       x.status ||= "in_progress";
     }
-    AC.setMyCourses(my);        
+    AC.setMyCourses(my);
+
     await AC.refreshBalances?.();
     AC.toast("Purchased with BNST!");
-    AC.navigate();    
-  };
-  
+    location.hash = "#/my-courses";
+  } catch (e) {
+    console.error(e);
+    AC.logTx?.({ title: "Buy course (BNST)", status: "err" });
+    AC.toast(errMsg(e));
+  }
+};
 
-  AC.renderCourses = () => {
+AC.renderCourses = () => {
   AC.setPage("All Courses", "Browse courses. Open a course to purchase it and start learning.");
 
-  const rows = AC.COURSES.map(c=>{
+  const rows = AC.COURSES.map(c => {
     const purchased = AC.isPurchased(c.id);
     const my = AC.myCourseEntry(c.id);
     const status = purchased
@@ -144,7 +232,7 @@ AC.buyCourse = async (courseId) => {
           <span class="tag">${c.priceEth} ETH</span>
           <span class="tag">payTo: <span class="mono">${AC.shortAddr(c.payTo)}</span></span>
         </td>
-        <td>${c.tags.map(t=>`<span class="tag">${t}</span>`).join("")}</td>
+        <td>${c.tags.map(t => `<span class="tag">${t}</span>`).join("")}</td>
         <td>${status}</td>
         <td>
           <div class="rowBtns">

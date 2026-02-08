@@ -292,3 +292,19 @@ iframe{width:100%;aspect-ratio:16/9;border:0;display:block}
   color:rgba(234,240,255,.70);
   text-align:right;
 }
+.txLog{
+  margin-top:10px;
+  font-family: monospace;
+  font-size:12px;
+}
+.txItem{
+  padding:8px 10px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  margin-bottom:8px;
+  background:rgba(255,255,255,.03);
+}
+.txItem.ok{ border-color:#3ddc97; }
+.txItem.wait{ border-color:#facc15; }
+.txItem.err{ border-color:#f87171; }
+.txHash{ color:#7c5cff }

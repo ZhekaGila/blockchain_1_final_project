@@ -1,4 +1,5 @@
 window.AC = window.AC || {};
+AC.EXPECTED_CHAIN_ID = 31337n; // Hardhat localhost
 
 AC.state = {
   provider: null,
@@ -29,8 +30,15 @@ AC.connectWallet = async () => {
     AC.state.account = await AC.state.signer.getAddress();
     AC.state.network = await AC.state.provider.getNetwork();
 
+    if (AC.state.network.chainId !== AC.EXPECTED_CHAIN_ID) {
+      AC.toast("Wrong network. Switch MetaMask to Localhost 31337.");
+      return;
+    }
+
+
     await AC.initContracts(); 
     await AC.refreshBalances();
+    await AC.syncMyCoursesFromChain?.();
     
     localStorage.setItem(AC.LS.wallet, AC.state.account);
     AC.updateWalletUI();
@@ -47,7 +55,7 @@ AC.mockConnect = () => {
   localStorage.setItem(AC.LS.mock, "1");
 
   AC.state.account = "0xDEMO00000000000000000000000000000000DEMO";
-  AC.state.network = { chainId: 11155111n };
+  AC.state.network = { chainId: 31337n };
   AC.state.provider = null;
   AC.state.signer = null;
 
@@ -99,6 +107,7 @@ AC.restoreWalletIfPossible = async () => {
 
     await AC.initContracts(); 
     await AC.refreshBalances();
+    await AC.syncMyCoursesFromChain?.();
 
     localStorage.setItem(AC.LS.wallet, AC.state.account);
     AC.updateWalletUI();

@@ -76,4 +76,22 @@ AC.updateWalletUI = () => {
     ant.textContent = "Network: —";
     andd.className = "dot";
   }
+
+  AC.logTx = function ({ title, status, hash, blockNumber }) {
+    const box = document.getElementById("txLog");
+    if (!box) return;
+
+    const div = document.createElement("div");
+    div.className = "txItem " + (status || "wait");
+
+    div.innerHTML = `
+      <b>${title}</b><br/>
+      status: <b>${status}</b><br/>
+      ${hash ? `tx: <span class="txHash">${hash.slice(0,10)}…</span><br/>` : ""}
+      ${blockNumber ? `block: ${blockNumber}` : ""}
+    `;
+
+    box.prepend(div);
+  };
+
 };

@@ -6,15 +6,63 @@ AC.loadJSON = (key, fallback) => {
 };
 AC.saveJSON = (key, val) => localStorage.setItem(key, JSON.stringify(val));
 
-AC.getMyCourses = () => AC.loadJSON(AC.LS.myCourses, []);
-AC.setMyCourses = (v) => AC.saveJSON(AC.LS.myCourses, v);
+AC.myCoursesKey = () => {
+  const a = (AC.state?.account || "anon").toLowerCase();
+  return `${AC.LS.myCourses}:${a}`;
+};
 
-AC.getCerts = () => AC.loadJSON(AC.LS.certs, []);
-AC.setCerts = (v) => AC.saveJSON(AC.LS.certs, v);
+AC.getMyCourses = () => AC.loadJSON(AC.myCoursesKey(), []);
+AC.setMyCourses = (v) => AC.saveJSON(AC.myCoursesKey(), v);
+
+AC.certsKey = () => {
+  const a = (AC.state?.account || "anon").toLowerCase();
+  return `${AC.LS.certs}:${a}`;
+};
+
+AC.getCerts = () => AC.loadJSON(AC.certsKey(), []);
+AC.setCerts = (v) => AC.saveJSON(AC.certsKey(), v);
+
+AC.hasCertificate = (courseId) => AC.getCerts().some(c => c.courseId === courseId);
+
+AC.syncMyCoursesFromChain = async () => {
+  const isMock = localStorage.getItem(AC.LS.mock) === "1";
+  if (isMock) return;
+
+  if (!AC.state?.account) return;
+  await AC.initContracts();
+
+  const platform = AC.contracts.platform;
+  const user = AC.state.account;
+
+  const my = [];
+
+  for (const c of AC.COURSES) {
+    const cid = AC.courseIdToBytes32(c.id);
+
+    const [purchased, completed] = await Promise.all([
+      platform.purchased(user, cid),
+      platform.completed(user, cid),
+    ]);
+
+    if (purchased) {
+      my.push({
+        id: c.id,
+        purchasedAt: new Date().toISOString(), 
+        progress: completed ? 1 : 0,
+        status: completed ? "completed" : "in_progress",
+        onchainCompleted: completed,
+        txHash: "" 
+      });
+    }
+  }
+
+  AC.setMyCourses(my);
+};
+
+
 
 AC.myCourseEntry = (id) => AC.getMyCourses().find(x => x.id === id) || null;
 AC.isPurchased = (id) => {
   const x = AC.myCourseEntry(id);
   return Boolean(x && x.purchasedAt);
 };
-AC.hasCertificate = (courseId) => AC.getCerts().some(c => c.courseId === courseId);

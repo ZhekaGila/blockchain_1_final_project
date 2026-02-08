@@ -3,6 +3,7 @@ window.AC = window.AC || {};
 AC.addProgress = async (courseId, delta = 0.25) => {
   const my = AC.getMyCourses();
   const x = my.find(m => m.id === courseId);
+
   if (!x || !x.purchasedAt) {
     AC.toast("Please buy the course first.");
     return;
@@ -10,27 +11,54 @@ AC.addProgress = async (courseId, delta = 0.25) => {
 
   x.progress = AC.clamp((x.progress ?? 0) + delta, 0, 1);
   x.status = (x.progress >= 1) ? "completed" : "in_progress";
-
   AC.setMyCourses(my);
 
   if (x.progress >= 1 && !x.onchainCompleted) {
-    try {
-      await AC.initContracts();
-      const platform = AC.contracts.platform;
-      const courseId32 = AC.courseIdToBytes32(courseId);
+    const isMock = localStorage.getItem(AC.LS.mock) === "1";
+    if (!isMock) {
+      try {
+        await AC.initContracts();
+        const platform = AC.contracts.platform;
+        const courseId32 = AC.courseIdToBytes32(courseId);
 
-      const tx = await platform.completeCourse(courseId32);
-      AC.toast("Completing on-chain… " + tx.hash.slice(0, 10) + "…");
-      await tx.wait();
-      await AC.refreshBalances();
+        AC.logTx?.({ title: "Complete course (on-chain)", status: "wait" });
 
+        AC.logTx?.({ title: "TX: platform.completeCourse(bytes32)", status: "wait" });
+
+        const tx = await platform.completeCourse(courseId32);
+        AC.logTx?.({ title: "Complete sent", status: "wait", hash: tx.hash });
+        AC.toast("Completing on-chain… " + tx.hash.slice(0, 10) + "…");
+
+        const receipt = await tx.wait();
+
+        if (receipt?.status === 0n || receipt?.status === 0) {
+          AC.logTx?.({ title: "Complete reverted", status: "err", hash: tx.hash });
+          AC.toast("Complete reverted (tx failed).");
+        } else {
+          const done = await platform.completed(AC.state.account, courseId32);
+          if (!done) {
+            AC.logTx?.({ title: "Complete not recorded", status: "err", hash: tx.hash });
+            AC.toast("Complete confirmed, but state not updated (wrong network/contract?).");
+          } else {
+            x.onchainCompleted = true;
+            AC.setMyCourses(my);
+
+            await AC.refreshBalances?.();
+            AC.logTx?.({ title: "Course completed (on-chain)", status: "ok", hash: tx.hash, blockNumber: receipt.blockNumber });
+            AC.toast("Completed on-chain + bonus minted!");
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        const msg =
+          (e?.code === 4001) ? "Complete rejected in MetaMask." :
+          (e?.shortMessage || e?.reason || e?.info?.error?.message || e?.message || "CompleteCourse failed.");
+        AC.logTx?.({ title: "Complete course (on-chain)", status: "err" });
+        AC.toast(msg);
+      }
+    } else {
       x.onchainCompleted = true;
       AC.setMyCourses(my);
-
-      AC.toast("Completed on-chain + bonus minted!");
-    } catch (e) {
-      console.error(e);
-      AC.toast("CompleteCourse failed/rejected");
     }
   }
 
@@ -38,31 +66,181 @@ AC.addProgress = async (courseId, delta = 0.25) => {
   AC.navigate();
 };
 
-
-AC.claimCertificate = async (courseId) => {
-  const course = AC.COURSES.find(c => c.id === courseId);
-  const x = AC.myCourseEntry(courseId);
-
-  if (!x || !x.purchasedAt) {
-    AC.toast("Please buy the course first.");
-    return;
+AC.addNftToMetaMask = async (tokenId) => {
+  if (!window.ethereum) {
+    AC.toast("MetaMask not found");
+    return false;
   }
-  if ((x.progress ?? 0) < 1) {
-    AC.toast("Certificate is available only after 100% progress.");
-    return;
+
+  try {
+    const added = await window.ethereum.request({
+      method: "wallet_watchAsset",
+      params: {
+        type: "ERC721",
+        options: {
+          address: AC.CONTRACTS.certificateNFT,
+          tokenId: String(tokenId),
+        },
+      },
+    });
+
+    if (added) AC.toast("NFT added to MetaMask!");
+    else AC.toast("NFT not added.");
+    return !!added;
+  } catch (e) {
+    console.error(e);
+    AC.toast("Failed to add NFT to MetaMask");
+    return false;
   }
-  if (AC.hasCertificate(courseId)) {
-    AC.toast("Certificate already claimed.");
-    return;
+};
+
+
+AC.completeCourseOnChain = async (courseId) => {
+  const isMock = localStorage.getItem(AC.LS.mock) === "1";
+  if (isMock) {
+    const my = AC.getMyCourses();
+    const x = my.find(m => m.id === courseId);
+    if (x) {
+      x.onchainCompleted = true;
+      x.status = "completed";
+      x.progress = 1;
+      AC.setMyCourses(my);
+    }
+    AC.navigate?.();
+    return true;
   }
 
   try {
     await AC.initContracts();
     const platform = AC.contracts.platform;
-    const courseId32 = AC.courseIdToBytes32(courseId);
+    const cid = AC.courseIdToBytes32(courseId);
 
-    const tx = await platform.mintCertificate(courseId32);
+    const already = await platform.completed(AC.state.account, cid);
+    if (already) {
+      const my = AC.getMyCourses();
+      const x = my.find(m => m.id === courseId);
+      if (x) {
+        x.onchainCompleted = true;
+        x.status = "completed";
+        x.progress = 1;
+        AC.setMyCourses(my);
+      }
+      AC.navigate?.();
+      return true;
+    }
+
+    AC.logTx?.({ title: "TX: platform.completeCourse(bytes32)", status: "wait" });
+
+    const tx = await platform.completeCourse(cid);
+    AC.logTx?.({ title: "Complete sent", status: "wait", hash: tx.hash });
+
+    const r = await tx.wait();
+    if (r?.status === 0n || r?.status === 0) {
+      AC.logTx?.({ title: "Complete reverted", status: "err", hash: tx.hash });
+      AC.toast("Complete reverted (tx failed).");
+      return false;
+    }
+
+    const done = await platform.completed(AC.state.account, cid);
+    if (!done) {
+      AC.toast("Complete confirmed, but state is still false (wrong network/contract?).");
+      return false;
+    }
+
+    const my = AC.getMyCourses();
+    const x = my.find(m => m.id === courseId);
+    if (x) {
+      x.onchainCompleted = true;
+      x.status = "completed";
+      x.progress = 1;
+      AC.setMyCourses(my);
+    }
+
+    AC.logTx?.({ title: "Course completed (on-chain)", status: "ok", hash: tx.hash, blockNumber: r.blockNumber });
+    AC.toast("Completed on-chain!");
+    AC.navigate?.();
+    return true;
+
+  } catch (e) {
+    console.error(e);
+    const msg =
+      (e?.code === 4001) ? "Complete rejected in MetaMask." :
+      (e?.shortMessage || e?.reason || e?.info?.error?.message || e?.message || "CompleteCourse failed.");
+    AC.toast(msg);
+    return false;
+  }
+};
+
+
+AC.claimCertificate = async (courseId) => {
+  const course = AC.COURSES.find(c => c.id === courseId);
+  const x = AC.myCourseEntry(courseId);
+
+  const rpcErrMsg = (e) => (
+    e?.shortMessage ||
+    e?.reason ||
+    e?.data?.message ||
+    e?.info?.error?.data?.message ||
+    e?.info?.error?.message ||
+    e?.message ||
+    "Transaction failed."
+  );
+
+  if (!x || !x.purchasedAt) return AC.toast("Please buy the course first.");
+  if ((x.progress ?? 0) < 1) return AC.toast("Certificate is available only after 100% progress.");
+  if (!x.onchainCompleted) return AC.toast("On-chain: course not completed yet. Click Complete on-chain first.");
+
+  if (AC._minting) return;
+  AC._minting = true;
+
+  try {
+    await AC.initContracts();
+    const platform = AC.contracts.platform;
+    const cid = AC.courseIdToBytes32(courseId);
+
+    // 1) check completed on-chain
+    const isCompleted = await platform.completed(AC.state.account, cid);
+    if (!isCompleted) {
+      AC.toast("On-chain: course not completed yet. Click Complete on-chain first.");
+      return;
+    }
+
+    try {
+      const evs = await platform.queryFilter(
+        platform.filters.CertificateMinted(AC.state.account, cid),
+        0,
+        "latest"
+      );
+
+      if (evs && evs.length > 0) {
+        const ev = evs[evs.length - 1];
+        const tokenId = ev.args.tokenId.toString();
+
+        const certs = AC.getCerts();
+        certs.unshift({
+          id: "cert-" + ev.transactionHash + "-" + tokenId,
+          courseId,
+          title: `${(course?.title ?? courseId)} — NFT Certificate`,
+          owner: AC.state.account,
+          issuedAt: new Date().toISOString().slice(0, 10),
+          txHash: ev.transactionHash,
+          tokenId
+        });
+        AC.setCerts(certs);
+
+        AC.toast("Already minted on-chain. Restored in My Certificates.");
+        location.hash = "#/certificates";
+        return;
+      }
+    } catch (e) {
+      console.warn("Mint pre-check failed (still trying mint):", e);
+    }
+
+    AC.logTx?.({ title: "TX: platform.mintCertificate(bytes32)", status: "wait" });
+
+    const tx = await platform.mintCertificate(cid);
     AC.toast("Minting certificate… " + tx.hash.slice(0, 10) + "…");
+
     const receipt = await tx.wait();
 
     let tokenId = null;
@@ -71,6 +249,7 @@ AC.claimCertificate = async (courseId) => {
         const parsed = platform.interface.parseLog(log);
         if (parsed && parsed.name === "CertificateMinted") {
           tokenId = parsed.args.tokenId.toString();
+          break;
         }
       } catch (_) {}
     }
@@ -88,21 +267,42 @@ AC.claimCertificate = async (courseId) => {
     AC.setCerts(certs);
 
     AC.toast("Certificate minted!");
+
+    if (tokenId) {
+      await AC.addNftToMetaMask(tokenId);
+    }
+
     if (AC.Cert && typeof AC.Cert.viewCertificate === "function") {
-      const payload = {
+      AC.Cert.viewCertificate({
         ...certs[0],
         courseTitle: course?.title ?? courseId,
         issuer: course?.issuer ?? "Course Platform"
-      };
-      AC.Cert.viewCertificate(payload);
+      });
     } else {
       location.hash = "#/certificates";
     }
+
   } catch (e) {
     console.error(e);
-    AC.toast("MintCertificate failed/rejected");
+
+    if (e?.code === 4001) {
+      AC.toast("Transaction rejected in MetaMask.");
+      return;
+    }
+
+    const msg = rpcErrMsg(e);
+    if (String(msg).includes("Already minted")) {
+      AC.toast("Already minted on-chain. Open My Certificates.");
+      location.hash = "#/certificates";
+      return;
+    }
+
+    AC.toast(msg);
+  } finally {
+    AC._minting = false;
   }
 };
+
 
 
 AC.renderCourse = () => {
@@ -113,7 +313,8 @@ AC.renderCourse = () => {
   const my = AC.myCourseEntry(course.id);
   const p = my?.progress ?? 0;
   const completed = p >= 1;
-  const canClaim = purchased && completed && !AC.hasCertificate(course.id);
+  const canClaim = purchased && completed && my?.onchainCompleted && !AC.hasCertificate(course.id);
+
 
   AC.setPage("Course Page", "Video lessons (cats 🐱), progress, purchase, and certificate.");
 
