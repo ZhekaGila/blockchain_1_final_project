@@ -15,29 +15,37 @@ AC.initProvider = async () => {
 
 AC.connectWallet = async () => {
   localStorage.removeItem(AC.LS.mock);
+
   const ok = await AC.initProvider();
-  if(!ok){
+  if (!ok) {
     AC.toast("MetaMask not found. Use Mock Connect to demo the UI.");
     return;
   }
-  try{
+
+  try {
     await window.ethereum.request({ method: "eth_requestAccounts" });
+
     AC.state.signer = await AC.state.provider.getSigner();
     AC.state.account = await AC.state.signer.getAddress();
     AC.state.network = await AC.state.provider.getNetwork();
 
+    await AC.initContracts(); 
+    await AC.refreshBalances();
+    
     localStorage.setItem(AC.LS.wallet, AC.state.account);
     AC.updateWalletUI();
     AC.toast("Connected: " + AC.shortAddr(AC.state.account));
     AC.showApp();
-  }catch(err){
+  } catch (err) {
     console.error(err);
     AC.toast("Connection rejected or failed.");
   }
 };
 
+
 AC.mockConnect = () => {
   localStorage.setItem(AC.LS.mock, "1");
+
   AC.state.account = "0xDEMO00000000000000000000000000000000DEMO";
   AC.state.network = { chainId: 11155111n };
   AC.state.provider = null;
@@ -48,6 +56,7 @@ AC.mockConnect = () => {
   AC.toast("Mock connected. You can open all pages.");
   AC.showApp();
 };
+
 
 AC.disconnectWallet = () => {
   AC.state.provider = null;
@@ -63,28 +72,39 @@ AC.disconnectWallet = () => {
 
 AC.restoreWalletIfPossible = async () => {
   const saved = localStorage.getItem(AC.LS.wallet);
-  if(!saved) return;
+  if (!saved) return;
 
-  if(localStorage.getItem(AC.LS.mock) === "1"){
+  if (localStorage.getItem(AC.LS.mock) === "1") {
     AC.state.account = saved;
     AC.state.network = { chainId: 11155111n };
+    AC.state.provider = null;
+    AC.state.signer = null;
+
     AC.updateWalletUI();
     AC.showApp();
     return;
   }
 
-  if(!window.ethereum) return;
+  if (!window.ethereum) return;
 
   await AC.initProvider();
-  try{
-    const accs = await window.ethereum.request({ method: "eth_accounts" });
-    if(accs && accs.length){
-      AC.state.signer = await AC.state.provider.getSigner();
-      AC.state.account = accs[0];
-      AC.state.network = await AC.state.provider.getNetwork();
-      localStorage.setItem(AC.LS.wallet, AC.state.account);
-      AC.updateWalletUI();
-      AC.showApp();
-    }
-  }catch(_){}
+
+  try {
+    const accounts = await window.ethereum.request({ method: "eth_accounts" });
+    if (!accounts || !accounts.length) return;
+
+    AC.state.signer = await AC.state.provider.getSigner();
+    AC.state.account = accounts[0];
+    AC.state.network = await AC.state.provider.getNetwork();
+
+    await AC.initContracts(); 
+    await AC.refreshBalances();
+
+    localStorage.setItem(AC.LS.wallet, AC.state.account);
+    AC.updateWalletUI();
+    AC.showApp();
+  } catch (e) {
+    console.error(e);
+  }
 };
+

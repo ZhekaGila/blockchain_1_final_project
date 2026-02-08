@@ -1,12 +1,17 @@
 window.AC = window.AC || {};
 
-AC.renderProfile = () => {
+AC.renderProfile = async () => {
+  await AC.refreshBalances();
+
   AC.setPage("Profile", "Blockchain CV: wallet + courses + certificates.");
 
   const my = AC.getMyCourses();
   const certs = AC.getCerts();
   const completed = my.filter(x => (x.progress ?? 0) >= 1).length;
   const mock = localStorage.getItem(AC.LS.mock) === "1";
+  const bonus = AC.state?.balances?.bonus;
+  const bonusText = bonus ? `${Number(bonus.formatted).toFixed(2)} ${bonus.symbol}` : "—";
+
 
   const netName = AC.state.network
     ? (AC.TESTNETS[Number(AC.state.network.chainId)] || ("Chain "+Number(AC.state.network.chainId)))
@@ -19,6 +24,7 @@ AC.renderProfile = () => {
         <div class="muted">
           <b>Address:</b> <span class="mono">${AC.state.account || "—"}</span><br/>
           <b>Network:</b> <span class="mono">${netName}</span><br/>
+          <b>Bonus balance:</b> <span class="mono">${bonusText}</span><br/>
           <b>Mode:</b> ${mock ? `<span class="tag warn">Mock</span>` : `<span class="tag ok">Real</span>`}
         </div>
 

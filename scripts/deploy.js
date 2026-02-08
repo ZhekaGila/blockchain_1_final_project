@@ -28,6 +28,10 @@ async function main() {
   await (await platform.setCoursePrice(courseId("bc101"), ethers.parseEther("0.001"))).wait();
   await (await platform.setCoursePrice(courseId("web3ui"), ethers.parseEther("0.001"))).wait();
   await (await platform.setCoursePrice(courseId("nftcert"), ethers.parseEther("0.001"))).wait();
+  await (await platform.setCourseBonusPrice(courseId("bc101"), ethers.parseUnits("50", 18))).wait();
+  await (await platform.setCourseBonusPrice(courseId("web3ui"), ethers.parseUnits("50", 18))).wait();
+  await (await platform.setCourseBonusPrice(courseId("nftcert"), ethers.parseUnits("50", 18))).wait();
+
 
   console.log("BonusToken:", await bonus.getAddress());
   console.log("CertificateNFT:", await cert.getAddress());

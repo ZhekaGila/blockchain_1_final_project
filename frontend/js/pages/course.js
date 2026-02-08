@@ -1,49 +1,100 @@
 window.AC = window.AC || {};
 
-AC.addProgress = (courseId, delta=0.25) => {
+AC.addProgress = async (courseId, delta = 0.25) => {
   const my = AC.getMyCourses();
   const x = my.find(m => m.id === courseId);
-  if(!x || !x.purchasedAt){
+  if (!x || !x.purchasedAt) {
     AC.toast("Please buy the course first.");
     return;
   }
+
   x.progress = AC.clamp((x.progress ?? 0) + delta, 0, 1);
   x.status = (x.progress >= 1) ? "completed" : "in_progress";
+
   AC.setMyCourses(my);
+
+  if (x.progress >= 1 && !x.onchainCompleted) {
+    try {
+      await AC.initContracts();
+      const platform = AC.contracts.platform;
+      const courseId32 = AC.courseIdToBytes32(courseId);
+
+      const tx = await platform.completeCourse(courseId32);
+      AC.toast("Completing on-chain… " + tx.hash.slice(0, 10) + "…");
+      await tx.wait();
+      await AC.refreshBalances();
+
+      x.onchainCompleted = true;
+      AC.setMyCourses(my);
+
+      AC.toast("Completed on-chain + bonus minted!");
+    } catch (e) {
+      console.error(e);
+      AC.toast("CompleteCourse failed/rejected");
+    }
+  }
+
   AC.toast("Progress: " + AC.percent(x.progress));
   AC.navigate();
 };
 
-AC.claimCertificate = (courseId) => {
+
+AC.claimCertificate = async (courseId) => {
   const course = AC.COURSES.find(c => c.id === courseId);
   const x = AC.myCourseEntry(courseId);
-  if(!x || !x.purchasedAt){
+
+  if (!x || !x.purchasedAt) {
     AC.toast("Please buy the course first.");
     return;
   }
-  if((x.progress ?? 0) < 1){
+  if ((x.progress ?? 0) < 1) {
     AC.toast("Certificate is available only after 100% progress.");
     return;
   }
-  if(AC.hasCertificate(courseId)){
+  if (AC.hasCertificate(courseId)) {
     AC.toast("Certificate already claimed.");
     return;
   }
 
-  const certs = AC.getCerts();
-  certs.unshift({
-    id: "cert-" + Date.now(),
-    courseId,
-    title: `${course.title} — NFT Certificate`,
-    owner: AC.state.account,
-    issuedAt: new Date().toISOString().slice(0,10),
-    txHashMock: "0x" + Math.random().toString(16).slice(2).padEnd(64,"0")
-  });
-  AC.setCerts(certs);
+  try {
+    await AC.initContracts();
+    const platform = AC.contracts.platform;
+    const courseId32 = AC.courseIdToBytes32(courseId);
 
-  AC.toast("Certificate claimed and added to My Certificates.");
-  location.hash = "#/certificates";
+    const tx = await platform.mintCertificate(courseId32);
+    AC.toast("Minting certificate… " + tx.hash.slice(0, 10) + "…");
+    const receipt = await tx.wait();
+
+    let tokenId = null;
+    for (const log of receipt.logs) {
+      try {
+        const parsed = platform.interface.parseLog(log);
+        if (parsed && parsed.name === "CertificateMinted") {
+          tokenId = parsed.args.tokenId.toString();
+        }
+      } catch (_) {}
+    }
+
+    const certs = AC.getCerts();
+    certs.unshift({
+      id: "cert-" + Date.now(),
+      courseId,
+      title: `${(course?.title ?? courseId)} — NFT Certificate`,
+      owner: AC.state.account,
+      issuedAt: new Date().toISOString().slice(0, 10),
+      txHash: tx.hash,
+      tokenId
+    });
+    AC.setCerts(certs);
+
+    AC.toast("Certificate minted!");
+    location.hash = "#/certificates";
+  } catch (e) {
+    console.error(e);
+    AC.toast("MintCertificate failed/rejected");
+  }
 };
+
 
 AC.renderCourse = () => {
   const id = localStorage.getItem(AC.LS.selectedCourse) || AC.COURSES[0]?.id;

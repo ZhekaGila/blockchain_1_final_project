@@ -15,6 +15,8 @@ contract CoursePlatform is Ownable {
     // courseId -> цена (wei)
     mapping(bytes32 => uint256) public coursePrice;
 
+    mapping(bytes32 => uint256) public bonusPrice;
+
     // purchased[user][courseId]  купленные курсы
     mapping(address => mapping(bytes32 => bool)) public purchased;
 
@@ -33,6 +35,9 @@ contract CoursePlatform is Ownable {
     event CourseCompleted(address indexed user, bytes32 indexed courseId);
     event BonusMinted(address indexed user, uint256 amount);
     event CertificateMinted(address indexed user, bytes32 indexed courseId, uint256 tokenId);
+    event CoursePurchasedWithBonus(address indexed user, bytes32 indexed courseId, uint256 paidBonus);
+    event CourseBonusPriceSet(bytes32 indexed courseId, uint256 priceBonus);
+
 
     constructor(address _bonusToken, address _certificateNFT) Ownable(msg.sender) {
         bonusToken = BonusToken(_bonusToken);
@@ -50,6 +55,11 @@ contract CoursePlatform is Ownable {
         coursePrice[courseId] = priceWei;
         emit CoursePriceSet(courseId, priceWei);
     }
+    function setCourseBonusPrice(bytes32 courseId, uint256 priceBonus) external onlyOwner {
+    require(priceBonus > 0, "Price=0");
+    bonusPrice[courseId] = priceBonus;
+    emit CourseBonusPriceSet(courseId, priceBonus);
+    }
 
     function buyCourse(bytes32 courseId) external payable {
         uint256 price = coursePrice[courseId];
@@ -60,6 +70,19 @@ contract CoursePlatform is Ownable {
         purchased[msg.sender][courseId] = true;
         emit CoursePurchased(msg.sender, courseId, msg.value);
     }
+    
+    function buyCourseWithBonus(bytes32 courseId) external {
+    uint256 price = bonusPrice[courseId];
+    require(price > 0, "Unknown course");
+    require(!purchased[msg.sender][courseId], "Already purchased");
+
+    bool ok = bonusToken.transferFrom(msg.sender, address(this), price);
+    require(ok, "transferFrom failed");
+
+    purchased[msg.sender][courseId] = true;
+    emit CoursePurchasedWithBonus(msg.sender, courseId, price);
+}
+
 
     function completeCourse(bytes32 courseId) external {
         require(purchased[msg.sender][courseId], "Not purchased");
@@ -69,8 +92,7 @@ contract CoursePlatform is Ownable {
         emit CourseCompleted(msg.sender, courseId);
 
     // Чиканка награды
-        uint256 price = coursePrice[courseId];
-        uint256 bonusAmount = (price * bonusPerEth) / 1e18; // цена
+        uint256 bonusAmount = 70e18; 
         bonusToken.mint(msg.sender, bonusAmount);
         emit BonusMinted(msg.sender, bonusAmount);
     }
