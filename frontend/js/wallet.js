@@ -30,16 +30,25 @@ AC.connectWallet = async () => {
     AC.state.account = await AC.state.signer.getAddress();
     AC.state.network = await AC.state.provider.getNetwork();
 
+    const genesis = await AC.state.provider.getBlock(0);
+    const genesisHash = genesis?.hash || "nohash";
+    const lastGenesis = localStorage.getItem("AC_LAST_GENESIS");
+
+    if (lastGenesis && lastGenesis !== genesisHash) {
+      AC.resetLocalDemoData?.(); 
+      AC.toast("Hardhat restarted — local data reset.");
+    }
+    localStorage.setItem("AC_LAST_GENESIS", genesisHash);
+
     if (AC.state.network.chainId !== AC.EXPECTED_CHAIN_ID) {
       AC.toast("Wrong network. Switch MetaMask to Localhost 31337.");
       return;
     }
 
-
-    await AC.initContracts(); 
+    await AC.initContracts();
     await AC.refreshBalances();
     await AC.syncMyCoursesFromChain?.();
-    
+
     localStorage.setItem(AC.LS.wallet, AC.state.account);
     AC.updateWalletUI();
     AC.toast("Connected: " + AC.shortAddr(AC.state.account));
@@ -84,7 +93,7 @@ AC.restoreWalletIfPossible = async () => {
 
   if (localStorage.getItem(AC.LS.mock) === "1") {
     AC.state.account = saved;
-    AC.state.network = { chainId: 11155111n };
+    AC.state.network = { chainId: 31337n }; // ✅ fixed
     AC.state.provider = null;
     AC.state.signer = null;
 
@@ -105,7 +114,20 @@ AC.restoreWalletIfPossible = async () => {
     AC.state.account = accounts[0];
     AC.state.network = await AC.state.provider.getNetwork();
 
-    await AC.initContracts(); 
+    const genesis = await AC.state.provider.getBlock(0);
+    const genesisHash = genesis?.hash || "nohash";
+    const lastGenesis = localStorage.getItem("AC_LAST_GENESIS");
+
+    if (lastGenesis && lastGenesis !== genesisHash) {
+      AC.resetLocalDemoData?.();
+    }
+    localStorage.setItem("AC_LAST_GENESIS", genesisHash);
+
+    if (AC.state.network.chainId !== AC.EXPECTED_CHAIN_ID) {
+      return;
+    }
+
+    await AC.initContracts();
     await AC.refreshBalances();
     await AC.syncMyCoursesFromChain?.();
 
@@ -116,4 +138,5 @@ AC.restoreWalletIfPossible = async () => {
     console.error(e);
   }
 };
+
 

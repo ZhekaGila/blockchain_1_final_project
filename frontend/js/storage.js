@@ -59,6 +59,14 @@ AC.syncMyCoursesFromChain = async () => {
   AC.setMyCourses(my);
 };
 
+AC.resetLocalDemoData = () => {
+  try {
+    localStorage.removeItem(AC.LS.myCourses);
+    localStorage.removeItem(AC.LS.certs);
+    localStorage.removeItem(AC.LS.selectedCourse);
+  } catch (_) {}
+};
+
 
 
 AC.myCourseEntry = (id) => AC.getMyCourses().find(x => x.id === id) || null;

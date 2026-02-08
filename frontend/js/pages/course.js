@@ -198,7 +198,6 @@ AC.claimCertificate = async (courseId) => {
     const platform = AC.contracts.platform;
     const cid = AC.courseIdToBytes32(courseId);
 
-    // 1) check completed on-chain
     const isCompleted = await platform.completed(AC.state.account, cid);
     if (!isCompleted) {
       AC.toast("On-chain: course not completed yet. Click Complete on-chain first.");
