@@ -30,6 +30,13 @@ AC.connectWallet = async () => {
     AC.state.account = await AC.state.signer.getAddress();
     AC.state.network = await AC.state.provider.getNetwork();
 
+    AC.logTx?.({
+      title: "Wallet connected",
+      status: "ok",
+      hash: AC.state.account,
+    });
+
+
     const genesis = await AC.state.provider.getBlock(0);
     const genesisHash = genesis?.hash || "nohash";
     const lastGenesis = localStorage.getItem("AC_LAST_GENESIS");
@@ -76,6 +83,12 @@ AC.mockConnect = () => {
 
 
 AC.disconnectWallet = () => {
+
+  AC.logTx?.({
+    title: "Wallet disconnected",
+    status: "warn",
+  });
+
   AC.state.provider = null;
   AC.state.signer = null;
   AC.state.account = null;

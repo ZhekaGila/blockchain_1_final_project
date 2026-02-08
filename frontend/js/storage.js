@@ -61,9 +61,13 @@ AC.syncMyCoursesFromChain = async () => {
 
 AC.resetLocalDemoData = () => {
   try {
-    localStorage.removeItem(AC.LS.myCourses);
-    localStorage.removeItem(AC.LS.certs);
-    localStorage.removeItem(AC.LS.selectedCourse);
+    const prefixes = [AC.LS.myCourses + ":", AC.LS.certs + ":"];
+    for (const k of Object.keys(localStorage)) {
+      if (prefixes.some(p => k.startsWith(p))) {
+        localStorage.removeItem(k);
+      }
+    }
+    if (AC.LS?.selectedCourse) localStorage.removeItem(AC.LS.selectedCourse);
   } catch (_) {}
 };
 
